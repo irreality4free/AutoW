@@ -1,4 +1,4 @@
-#include <LCD_1602_RUS.h>
+ #include <LCD_1602_RUS.h>
 #include <Stepper.h>
 #include <SoftwareSerial.h>
 
@@ -128,6 +128,8 @@ void loop() {
   if (work == 0) // Кнопка не нажата, режим ожидания(выводим показания весов и выбранной дозировки)
   {
     Read_uart();
+
+    
     if (tare == 0) //Не включена функция тарирования
     {
       //lcd.clear();
@@ -157,8 +159,9 @@ void loop() {
     }
   }
 
-  if (work == 1) //Точное дозирование
+  if(work == 1) //Точное дозирование
   {
+    while(1){
     //Кнопка уже нажата, крутим шнек на полной скорости, вес < дозировки * 0.2
     if (mass < dose - 1.85)
     {
@@ -178,24 +181,7 @@ void loop() {
         write_state('3');*/
 
     }
-    if (mass < dose - 1.85)
-    {
-
-      Go(1);
-
-      Read_uart();
-      lcd.setCursor(0, 0);
-      lcd.print(mass);
-      /*
-        lcd.setCursor(0, 0);
-        lcd.print("--Дозирование--");
-        lcd.setCursor(0, 1);
-        lcd.print("Готово:");
-        lcd.print(mass);
-        lcd.print("г   ");
-        write_state('3');*/
-
-    }
+//   
     if (mass < dose - 0.85 && mass >= dose -1.85)
     {
 
@@ -250,9 +236,12 @@ void loop() {
         lcd.print("     ");
         lcd.print(mass);
         lcd.print("г      ");
+        delay(3000);
         work = 0;
         write_state('6');
+        break;
       }
+    }
     }
   }
 
