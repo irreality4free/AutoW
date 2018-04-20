@@ -1,8 +1,8 @@
- #include <LCD_1602_RUS.h>
+#include <LCD_1602_RUS.h>
 #include <Stepper.h>
 #include <SoftwareSerial.h>
 
-
+#define DEBUG false
 // Символ новой строки.
 #define NEW_LINE '\n'
 
@@ -12,11 +12,17 @@
 
 const int stepsPerRevolution = 200;
 
-LCD_1602_RUS lcd(0x27, 16, 2); 
+LCD_1602_RUS lcd(0x27, 16, 2);
 
 int PIN = 6;
 const byte rxPin = 11;
 const byte txPin = 9;
+int relay_pin =  12;
+int cur_state = 1;
+long current_time;
+int period = 2000;
+
+
 
 // set up a new serial object
 SoftwareSerial mySerial (rxPin, txPin);
@@ -39,20 +45,59 @@ int dose; //Дозировка
 int max_dose = 150; //Максимальный вес
 int min_dose = 50; //Минимальный вес
 
+void vibro(){
+  if(millis()-current_time>period){
+    cur_state= !cur_state;
+    digitalWrite(relay_pin, cur_state);
+    current_time=millis();
+  }
+}
+
 void write_state(char num)
 {
-  lcd.setCursor(15, 1);
-  lcd.write(num);
-
+  if (DEBUG) {
+    lcd.setCursor(15, 1);
+    lcd.write(num);
+  }
 }
 
 
 void Go(int del) {
   digitalWrite(PIN, HIGH);
-  delay(del);
+  if (del > 0) delay(del);
   digitalWrite(PIN, LOW);
-  delay(del);
+  if (del > 0) delay(del);
 }
+
+
+
+void parseIt(String input_string) {
+
+
+  if (input_string.substring(0, 2) == "US") {
+    finished = 0;
+  }
+  else if (input_string.substring(0, 2) == "ST") {
+    finished = 1;
+  }
+  if (input_string.substring(3, 5) == "GS") {
+    tare = 0;
+  }
+  else if (input_string.substring(3, 5) == "NT") {
+    tare = 1;
+  }
+  mass = input_string.substring(5, 13).toFloat();
+
+
+}
+
+
+
+
+
+
+
+
 
 void Read_uart()
 {
@@ -78,33 +123,13 @@ void Read_uart()
   }
 }
 
-void parseIt(String input_string) {
-
-
-  if (input_string.substring(0, 2) == "US") {
-    finished = 0;
-  }
-  else if (input_string.substring(0, 2) == "ST") {
-    finished = 1;
-  }
-  if (input_string.substring(3, 5) == "GS") {
-    tare = 0;
-  }
-  else if (input_string.substring(3, 5) == "NT") {
-    tare = 1;
-  }
-  mass = input_string.substring(5, 13).toFloat();
-
-
-}
-
 
 void setup() {
   //lcd
   digitalWrite(3, HIGH);
   lcd.init();
   lcd.backlight();// Включаем подсветку дисплея
-  lcd.print("\"ЛАР технологии\"");
+  lcd.print("\"LAR TECH\"");
   lcd.setCursor(0, 1);
   lcd.print("Эскобар-мини 1.0");
   delay(500);
@@ -114,10 +139,13 @@ void setup() {
   Serial.begin(9600);
   pinMode(rxPin, INPUT);
   pinMode(txPin, OUTPUT);
+  pinMode(relay_pin, OUTPUT);
+  digitalWrite(relay_pin, HIGH);
   mySerial.begin(9600);
 
   pinMode (Button, INPUT);
   digitalWrite(3, HIGH);
+  current_time=millis();
 
 }
 
@@ -129,7 +157,7 @@ void loop() {
   {
     Read_uart();
 
-    
+
     if (tare == 0) //Не включена функция тарирования
     {
       //lcd.clear();
@@ -159,89 +187,49 @@ void loop() {
     }
   }
 
-  if(work == 1) //Точное дозирование
+  if (work == 1) //Точное дозирование
   {
-    while(1){
-    //Кнопка уже нажата, крутим шнек на полной скорости, вес < дозировки * 0.2
-    if (mass < dose - 1.85)
-    {
-
-      Go(0);
-
-      Read_uart();
-      lcd.setCursor(0, 0);
-      lcd.print(mass);
-      /*
-        lcd.setCursor(0, 0);
-        lcd.print("--Дозирование--");
-        lcd.setCursor(0, 1);
-        lcd.print("Готово:");
-        lcd.print(mass);
-        lcd.print("г   ");
-        write_state('3');*/
-
-    }
-//   
-    if (mass < dose - 0.85 && mass >= dose -1.85)
-    {
-
-      Go(5);
-
-      Read_uart();
-      lcd.setCursor(0, 0);
-      lcd.print(mass);
-      /*
-        lcd.setCursor(0, 0);
-        lcd.print("--Дозирование--");
-        lcd.setCursor(0, 1);
-        lcd.print("Готово:");
-        lcd.print(mass);
-        lcd.print("г   ");
-        write_state('3');*/
-
-    }
-
-    //Кнопка уже нажата, крутим шнек порциями, вес < дозировки * 0.2
-    if (mass < dose && mass >= dose -0.85)
-    {
-      Go(20);
-      delay(200);
-      Read_uart();
-      lcd.setCursor(0, 0);
-      lcd.print(mass);
-      /*
-        lcd.setCursor(0, 0);
-        lcd.print("--Дозирование--");
-        lcd.setCursor(0, 1);
-        lcd.print("Готово:");
-        lcd.print(mass);
-        lcd.print("г   ");
-
-        write_state('4');*/
-
-    }
-
-    // Кнопка уже нажата, шнек остановлен, вес >= дозировки, взвешивание завершено, выводим просьбу заменить баночку
-    if (mass >= dose - 0.3)
-    {
-      write_state('5');
-
-      //Stop();
-      delay(2000);
-      if (finished == 1)
+    long count = 0;
+    while (1) {
+        Read_uart();
+      //Кнопка уже нажата, крутим шнек на полной скорости, вес < дозировки * 0.2
+      if (mass < dose )
       {
-        lcd.setCursor(0, 0);
-        lcd.print("-Итоговая масса-");
-        lcd.setCursor(0, 1);
-        lcd.print("     ");
-        lcd.print(mass);
-        lcd.print("г      ");
-        delay(3000);
-        work = 0;
-        write_state('6');
-        break;
+        vibro();
+//        digitalWrite(relay_pin, LOW);
+        Go(2);
+        count += 1;
+        if (count > 200 )
+        {
+          count = 0;
+          lcd.setCursor(0, 0);
+          lcd.print(mass);
+          lcd.setCursor(0, 1);
+        }
       }
-    }
+
+
+
+      // Кнопка уже нажата, шнек остановлен, вес >= дозировки, взвешивание завершено, выводим просьбу заменить баночку
+      if (mass >= dose )
+      {
+        write_state('5');
+
+        if (finished == 1)
+        {
+          digitalWrite(relay_pin, HIGH);
+          lcd.setCursor(0, 0);
+          lcd.print("-Итоговая масса-");
+          lcd.setCursor(0, 1);
+          lcd.print("     ");
+          lcd.print(mass);
+          lcd.print("г      ");
+          delay(3000);
+          work = 0;
+          write_state('6');
+          break;
+        }
+      }
     }
   }
 
